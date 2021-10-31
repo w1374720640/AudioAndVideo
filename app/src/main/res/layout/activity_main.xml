@@ -5,8 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:paddingLeft="16dp"
-    android:paddingRight="16dp"
     android:paddingTop="10dp"
+    android:paddingRight="16dp"
     android:paddingBottom="10dp"
     tools:context=".MainActivity">
 
@@ -16,5 +16,12 @@
         android:layout_height="wrap_content"
         android:text="@string/task1"
         app:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/task2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/task2"
+        app:layout_constraintTop_toBottomOf="@id/task1" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
