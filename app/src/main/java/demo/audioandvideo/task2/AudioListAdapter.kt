@@ -37,7 +37,7 @@ class AudioListAdapter(private var context: Context, private var datas: List<Fil
         val dateView = itemView.findViewById<TextView>(R.id.dateTv)
 
         fun bind(data: File) {
-
+            nameView.text = data.name
         }
     }
 }

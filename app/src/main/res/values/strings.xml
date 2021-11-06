@@ -19,4 +19,11 @@
     <string name="task16">将 x264 库移植到 Android 平台，结合上面积累的经验，完成视频数据 H264 软编功能</string>
     <string name="task17">将 librtmp 库移植到 Android 平台，结合上面积累的经验，完成 Android RTMP 推流功能</string>
     <string name="task18">上面积累的经验，做一款短视频 APP，完成如：断点拍摄、添加水印、本地转码、视频剪辑、视频拼接、MV 特效等功能</string>
+
+    <string name="permission_reject_title">申请权限失败</string>
+    <string name="reject_record_audio">为保证录音功能正常，请允许录音权限</string>
+    <string name="file_write_failed">文件写入失败</string>
+    <string name="file_write_succeed">文件保存成功</string>
+    <string name="dialog_positive_btn">确定</string>
+    <string name="dialog_negative_btn">取消</string>
 </resources>
