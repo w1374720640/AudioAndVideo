@@ -6,18 +6,20 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Bundle
-import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import demo.audioandvideo.R
+import demo.audioandvideo.utils.DialogUtils
+import demo.audioandvideo.utils.LogUtils
+import demo.audioandvideo.utils.TimerCounter
+import demo.audioandvideo.utils.ToastUtils
 import kotlinx.coroutines.*
 import java.io.BufferedOutputStream
 import java.io.File
@@ -34,14 +36,16 @@ class AudioActivity : AppCompatActivity(), View.OnClickListener {
     private lateinit var timeTv: TextView
     private lateinit var startBtn: Button
     private lateinit var pauseBtn: Button
+    private lateinit var resumeBtn: Button
     private lateinit var stopBtn: Button
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: AudioListAdapter
     private val audioList = arrayListOf<File>()
-    private lateinit var audioRecord: AudioRecord
+    private var audioRecord: AudioRecord? = null
     private var minBufferSize = 0
     private lateinit var buffer: ByteArray
     private var recordState = RecordState.STOP
+    private var timerCounter: TimerCounter? = null
 
     enum class RecordState {
         STOP, RECORDING, PAUSE
@@ -76,11 +80,13 @@ class AudioActivity : AppCompatActivity(), View.OnClickListener {
         timeTv = findViewById(R.id.timeTv)
         startBtn = findViewById(R.id.startBtn)
         pauseBtn = findViewById(R.id.pauseBtn)
+        resumeBtn = findViewById(R.id.resumeBtn)
         stopBtn = findViewById(R.id.stopBtn)
         initRecyclerView()
 
         startBtn.setOnClickListener(this)
         pauseBtn.setOnClickListener(this)
+        resumeBtn.setOnClickListener(this)
         stopBtn.setOnClickListener(this)
     }
 
@@ -90,6 +96,23 @@ class AudioActivity : AppCompatActivity(), View.OnClickListener {
         getAudioList()
         adapter = AudioListAdapter(this, audioList)
         recyclerView.adapter = adapter
+    }
+
+    private fun initTimerCounter() {
+        timerCounter = TimerCounter(lifecycle) { time ->
+            runOnUiThread {
+//                LogUtils.d("time=$time")
+                val hour = time / (60 * 60 * 1000)
+                val minute = (time % (60 * 60 * 1000)) / (60 * 1000)
+                val second = (time % (60 * 1000)) / 1000
+                timeTv.text = if (hour == 0L) {
+                    // 格式化字符串，不足两位前面补0
+                    String.format("%02d:%02d", minute, second)
+                } else {
+                    String.format("%d:%02d:%02d", hour, minute, second)
+                }
+            }
+        }
     }
 
     private fun getAudioList() {
@@ -102,25 +125,25 @@ class AudioActivity : AppCompatActivity(), View.OnClickListener {
     private val permissionRequest =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { allowPermission ->
             if (allowPermission) {
-                if (recordState == RecordState.PAUSE) {
-                    recordState = RecordState.RECORDING
-                    startBtn.isEnabled = false
-                    pauseBtn.isEnabled = true
-                    stopBtn.isEnabled = true
-                } else {
-                    initAudioRecord()
-                    audioRecord.startRecording()
-                    recordState = RecordState.RECORDING
-                    startBtn.isEnabled = false
-                    pauseBtn.isEnabled = true
-                    stopBtn.isEnabled = true
-                    lifecycleScope.launch {
-                        val result = readRecordingData()
-                        showResult(result)
-                    }
+                initAudioRecord()
+                audioRecord?.startRecording()
+                initTimerCounter()
+                timerCounter?.start()
+                recordState = RecordState.RECORDING
+                startBtn.isEnabled = false
+                pauseBtn.isEnabled = true
+                resumeBtn.isEnabled = false
+                stopBtn.isEnabled = true
+                lifecycleScope.launch {
+                    val result = readRecordingData()
+                    showResult(result)
                 }
             } else {
-                showPermissionRejectDialog()
+                DialogUtils.showDialog(
+                    this,
+                    R.string.permission_reject_title,
+                    R.string.reject_record_audio
+                )
             }
         }
 
@@ -131,32 +154,52 @@ class AudioActivity : AppCompatActivity(), View.OnClickListener {
             }
             R.id.pauseBtn -> {
                 recordState = RecordState.PAUSE
-                startBtn.isEnabled = true
+                timerCounter?.pause()
+                startBtn.isEnabled = false
                 pauseBtn.isEnabled = false
+                resumeBtn.isEnabled = true
+                stopBtn.isEnabled = true
+            }
+            R.id.resumeBtn -> {
+                recordState = RecordState.RECORDING
+                timerCounter?.resume()
+                startBtn.isEnabled = false
+                pauseBtn.isEnabled = true
+                resumeBtn.isEnabled = false
                 stopBtn.isEnabled = true
             }
             R.id.stopBtn -> {
                 recordState = RecordState.STOP
+                timerCounter?.stop()
                 startBtn.isEnabled = true
                 pauseBtn.isEnabled = false
+                resumeBtn.isEnabled = false
                 stopBtn.isEnabled = false
             }
         }
     }
 
-    private fun showPermissionRejectDialog() {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.permission_reject_title)
-            .setMessage(R.string.reject_record_audio)
-            .setPositiveButton(R.string.dialog_positive_btn) { _, _->
+    override fun onBackPressed() {
+        if (recordState != RecordState.STOP) {
+            DialogUtils.showDialog(this,
+                R.string.dialog_common_title,
+                R.string.record_audio_back_press,
+                positiveClickListener = { _, _ ->
+                    recordState = RecordState.STOP
+                    timerCounter?.stop()
+                    finish()
+                },
+                negativeClickListener = { _, _ ->
 
-            }
-            .show()
+                })
+        } else {
+            super.onBackPressed()
+        }
     }
 
     private fun initAudioRecord() {
         minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        Log.d("initAudioRecord", "minBufferSize=$minBufferSize")
+        LogUtils.d("minBufferSize=$minBufferSize")
         audioRecord = AudioRecord(
             AUDIO_SOURCE,
             SAMPLE_RATE,
@@ -176,12 +219,22 @@ class AudioActivity : AppCompatActivity(), View.OnClickListener {
                 val file = File(parentFile, fileName)
                 val outputStream = BufferedOutputStream(FileOutputStream(file))
                 while (recordState != RecordState.STOP) {
-                    val read = audioRecord.read(buffer, 0, minBufferSize)
+                    // 使用非阻塞的方式获取数据，每次只获取一小段数据
+                    val read =
+                        audioRecord?.read(buffer, 0, buffer.size, AudioRecord.READ_NON_BLOCKING)
+                            ?: -1
                     if (recordState == RecordState.RECORDING && read > 0) {
+//                        LogUtils.d("read $read bytes")
                         outputStream.write(buffer, 0, read)
+                    }
+                    if (!lifecycle.currentState.isAtLeast(Lifecycle.State.CREATED)) {
+                        recordState = RecordState.STOP
                     }
                 }
                 outputStream.close()
+                audioRecord?.stop()
+                audioRecord?.release()
+                audioRecord = null
             }
         }
     }
@@ -190,19 +243,11 @@ class AudioActivity : AppCompatActivity(), View.OnClickListener {
     private suspend fun showResult(result: Result<Unit>) {
         withContext(Dispatchers.Main) {
             if (result.isSuccess) {
-                Toast.makeText(
-                    this@AudioActivity,
-                    R.string.file_write_succeed,
-                    Toast.LENGTH_SHORT
-                ).show()
+                ToastUtils.show(this@AudioActivity, R.string.file_write_succeed)
                 getAudioList()
                 adapter.notifyDataSetChanged()
             } else {
-                Toast.makeText(
-                    this@AudioActivity,
-                    R.string.file_write_failed,
-                    Toast.LENGTH_SHORT
-                ).show()
+                ToastUtils.show(this@AudioActivity, R.string.file_write_failed)
             }
         }
     }

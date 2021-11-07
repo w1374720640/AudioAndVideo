@@ -26,4 +26,6 @@
     <string name="file_write_succeed">文件保存成功</string>
     <string name="dialog_positive_btn">确定</string>
     <string name="dialog_negative_btn">取消</string>
+    <string name="dialog_common_title">提示</string>
+    <string name="record_audio_back_press">正在录制音频，是否保存后退出？</string>
 </resources>

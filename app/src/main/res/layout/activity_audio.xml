@@ -37,14 +37,24 @@
         app:layout_constraintTop_toTopOf="@id/startBtn" />
 
     <Button
+        android:id="@+id/resumeBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="10dp"
+        android:enabled="false"
+        android:text="继续"
+        app:layout_constraintLeft_toRightOf="@id/pauseBtn"
+        app:layout_constraintTop_toTopOf="@id/pauseBtn" />
+
+    <Button
         android:id="@+id/stopBtn"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginLeft="10dp"
         android:enabled="false"
         android:text="停止"
-        app:layout_constraintLeft_toRightOf="@id/pauseBtn"
-        app:layout_constraintTop_toTopOf="@id/pauseBtn" />
+        app:layout_constraintLeft_toRightOf="@id/resumeBtn"
+        app:layout_constraintTop_toTopOf="@id/resumeBtn" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"

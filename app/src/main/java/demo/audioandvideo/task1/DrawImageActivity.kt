@@ -9,9 +9,9 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.TextureView
 import android.widget.ImageView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import demo.audioandvideo.R
+import demo.audioandvideo.utils.ToastUtils
 import java.io.IOException
 
 /**
@@ -50,7 +50,7 @@ class DrawImageActivity : AppCompatActivity() {
             val inputStream = assets.open(fileName)
             return BitmapFactory.decodeStream(inputStream)
         } catch (e: IOException) {
-            Toast.makeText(this, "File not exist!", Toast.LENGTH_SHORT).show()
+            ToastUtils.show(this, "File not exist!")
             return null
         }
     }
