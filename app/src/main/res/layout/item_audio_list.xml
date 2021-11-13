@@ -17,6 +17,16 @@
         app:layout_constraintTop_toTopOf="parent"
         tools:text="录音名称" />
 
+    <TextView
+        android:id="@+id/stateView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginRight="16dp"
+        android:textSize="14sp"
+        app:layout_constraintBottom_toBottomOf="@id/nameView"
+        app:layout_constraintRight_toRightOf="parent"
+        tools:text="播放中" />
+
     <ProgressBar
         android:id="@+id/progressBar"
         style="@style/Widget.AppCompat.ProgressBar.Horizontal"

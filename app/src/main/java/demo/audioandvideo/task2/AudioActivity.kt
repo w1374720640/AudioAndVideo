@@ -2,9 +2,7 @@ package demo.audioandvideo.task2
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.MediaRecorder
+import android.media.*
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -21,9 +19,7 @@ import demo.audioandvideo.utils.LogUtils
 import demo.audioandvideo.utils.TimerCounter
 import demo.audioandvideo.utils.ToastUtils
 import kotlinx.coroutines.*
-import java.io.BufferedOutputStream
-import java.io.File
-import java.io.FileOutputStream
+import java.io.*
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -40,22 +36,37 @@ class AudioActivity : AppCompatActivity(), View.OnClickListener {
     private lateinit var stopBtn: Button
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: AudioListAdapter
-    private val audioList = arrayListOf<File>()
+    private val audioList = arrayListOf<AudioListData>()
+
     private var audioRecord: AudioRecord? = null
     private var minBufferSize = 0
     private lateinit var buffer: ByteArray
     private var recordState = RecordState.STOP
     private var timerCounter: TimerCounter? = null
 
+    private var audioTrack: AudioTrack? = null
+    private var trackBufferSize = 0
+    private lateinit var trackBuffer: ByteArray
+
+    private var audioPlayPosition = -1
+    private var trackState = TrackState.STOP
+
+
     enum class RecordState {
         STOP, RECORDING, PAUSE
+    }
+
+    enum class TrackState {
+        STOP, RUNNING, PAUSE
     }
 
     companion object {
         const val AUDIO_SOURCE = MediaRecorder.AudioSource.MIC
         const val SAMPLE_RATE = 44100
-        const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
+        const val CHANNEL_IN_CONFIG = AudioFormat.CHANNEL_IN_MONO
         const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+        const val STREAM_TYPE = AudioManager.STREAM_MUSIC
+        const val CHANNEL_OUT_CONFIG = AudioFormat.CHANNEL_OUT_MONO
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -96,6 +107,39 @@ class AudioActivity : AppCompatActivity(), View.OnClickListener {
         getAudioList()
         adapter = AudioListAdapter(this, audioList)
         recyclerView.adapter = adapter
+        adapter.itemClickListener = {
+            val data = audioList[it]
+            if (it == audioPlayPosition) {
+                when (trackState) {
+                    TrackState.STOP -> {
+                        initAudioTrack()
+                        audioTrack?.play()
+                        trackState = TrackState.RUNNING
+                        lifecycleScope.launch {
+                            writeAudioTrackData(data.file)
+                        }
+                    }
+                    TrackState.PAUSE -> {
+                        audioTrack?.play()
+                        trackState = TrackState.RUNNING
+                    }
+                    TrackState.RUNNING -> {
+                        audioTrack?.pause()
+                        trackState = TrackState.PAUSE
+                    }
+                }
+            } else {
+                audioPlayPosition = it
+                initAudioTrack()
+                audioTrack?.play()
+                trackState = TrackState.RUNNING
+                lifecycleScope.launch {
+                    writeAudioTrackData(data.file)
+                }
+            }
+            data.state = trackState
+            adapter.notifyItemChanged(audioPlayPosition)
+        }
     }
 
     private fun initTimerCounter() {
@@ -117,8 +161,8 @@ class AudioActivity : AppCompatActivity(), View.OnClickListener {
 
     private fun getAudioList() {
         audioList.clear()
-        parentFile.listFiles()?.let {
-            audioList.addAll(it)
+        parentFile.listFiles()?.forEach {
+            audioList.add(AudioListData(it))
         }
     }
 
@@ -193,17 +237,25 @@ class AudioActivity : AppCompatActivity(), View.OnClickListener {
 
                 })
         } else {
+            if (trackState != TrackState.STOP) {
+                audioTrack?.pause()
+                audioTrack?.flush()
+                audioTrack?.release()
+                audioTrack = null
+                trackState = TrackState.STOP
+                audioPlayPosition = -1
+            }
             super.onBackPressed()
         }
     }
 
     private fun initAudioRecord() {
-        minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+        minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_IN_CONFIG, AUDIO_FORMAT)
         LogUtils.d("minBufferSize=$minBufferSize")
         audioRecord = AudioRecord(
             AUDIO_SOURCE,
             SAMPLE_RATE,
-            CHANNEL_CONFIG,
+            CHANNEL_IN_CONFIG,
             AUDIO_FORMAT,
             minBufferSize * 2
         )
@@ -252,4 +304,47 @@ class AudioActivity : AppCompatActivity(), View.OnClickListener {
         }
     }
 
+    private fun initAudioTrack() {
+        trackBufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_OUT_CONFIG, AUDIO_FORMAT)
+        trackBuffer = ByteArray(trackBufferSize)
+        audioTrack = AudioTrack(
+            STREAM_TYPE,
+            SAMPLE_RATE,
+            CHANNEL_OUT_CONFIG,
+            AUDIO_FORMAT,
+            trackBufferSize * 2,
+            AudioTrack.MODE_STREAM
+        )
+    }
+
+    private suspend fun writeAudioTrackData(file: File) {
+        withContext(Dispatchers.IO) {
+            kotlin.runCatching {
+                val inputStream = BufferedInputStream(FileInputStream(file))
+                while (trackState != TrackState.STOP && inputStream.available() > 0) {
+                    if (!lifecycle.currentState.isAtLeast(Lifecycle.State.CREATED)) {
+                        break
+                    }
+                    val count = inputStream.read(trackBuffer)
+                    LogUtils.d("count=$count")
+                    if (count > 0) {
+                        // FIXME 暂停时会直接退出循环
+                        audioTrack?.write(trackBuffer, 0, count, AudioTrack.WRITE_BLOCKING)
+                    }
+                }
+                inputStream.close()
+                audioTrack?.stop()
+                audioTrack?.release()
+                audioTrack = null
+                trackState = TrackState.STOP
+                if (audioPlayPosition in audioList.indices) {
+                    withContext(Dispatchers.Main) {
+                        audioList[audioPlayPosition].state = TrackState.STOP
+                        adapter.notifyItemChanged(audioPlayPosition)
+                        audioPlayPosition = -1
+                    }
+                }
+            }
+        }
+    }
 }
